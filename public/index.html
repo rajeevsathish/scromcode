@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SCORM Resume Capability Analyzer</title>
+    <meta name="description" content="Analyze, repair, and play SCORM packages directly in your browser.">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>📦 SCORM Resume Capability Analyzer</h1>
+            <p class="subtitle">Analyze, repair &amp; play SCORM packages</p>
+        </header>
+
+        <!-- ── Single File Upload ── -->
+        <div class="upload-section">
+            <div class="upload-area" id="uploadArea">
+                <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="17 8 12 3 7 8"></polyline>
+                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                <p class="upload-text">Drag &amp; drop your SCORM zip file here</p>
+                <p class="upload-subtext">or</p>
+                <button class="browse-btn" onclick="document.getElementById('fileInput').click()">
+                    Browse Files
+                </button>
+                <input type="file" id="fileInput" accept=".zip" style="display: none;">
+            </div>
+
+            <!-- Folder Analysis Section -->
+            <div class="folder-section" id="folderSection">
+                <div class="divider"><span>OR</span></div>
+                <h3>📁 Batch Analyze / Repair Folder</h3>
+                <p class="folder-subtitle">Analyze or repair all SCORM packages in a folder</p>
+                <div class="folder-input-group">
+                    <input type="text" id="folderPath" class="folder-input" placeholder="/path/to/scorm/packages">
+                    <button class="analyze-folder-btn" onclick="analyzeFolderPath()">Analyze</button>
+                    <button class="repair-folder-btn" onclick="repairFolderPath()">🔧 Repair All</button>
+                </div>
+            </div>
+
+            <div class="progress-section" id="progressSection" style="display: none;">
+                <div class="spinner"></div>
+                <p id="progressText">Analyzing SCORM package...</p>
+            </div>
+        </div>
+
+        <!-- ── Single File Results ── -->
+        <div class="results-section" id="resultsSection" style="display: none;">
+            <h2>Analysis Results</h2>
+            <div class="result-card" id="resultCard"></div>
+        </div>
+
+        <!-- ── Batch Results ── -->
+        <div class="batch-results-section" id="batchResultsSection" style="display: none;">
+            <h2>📊 Batch Analysis Results</h2>
+            <div class="summary-card" id="summaryCard"></div>
+            <div class="batch-results" id="batchResults"></div>
+        </div>
+    </div>
+
+    <!-- ── iFrame Player Modal ── -->
+    <div class="player-modal" id="playerModal" style="display: none;">
+        <div class="player-header">
+            <div class="player-title">▶ SCORM Player</div>
+            <div class="player-status-bar" id="playerStatusBar">
+                <span class="status-pill" id="statusCompletion">⏳ Not Started</span>
+                <span class="status-pill" id="statusScore">🎯 Score: —</span>
+                <span class="status-pill" id="statusLocation">📍 Location: —</span>
+                <span class="status-pill" id="statusSuspend">💾 Suspend: 0 chars</span>
+            </div>
+            <button class="player-close-btn" onclick="closePlayer()">✕ Close</button>
+        </div>
+        <iframe id="scormFrame" class="player-iframe"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"></iframe>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,23 @@
+{
+    "name": "scorm-resume-analyzer",
+    "version": "1.0.0",
+    "description": "SCORM package analyzer to detect resume capability",
+    "main": "server.js",
+    "scripts": {
+        "start": "node server.js",
+        "dev": "node server.js"
+    },
+    "keywords": [
+        "scorm",
+        "analyzer",
+        "resume"
+    ],
+    "author": "",
+    "license": "ISC",
+    "dependencies": {
+        "adm-zip": "^0.5.10",
+        "express": "^4.18.2",
+        "multer": "^1.4.5-lts.1",
+        "xml2js": "^0.6.2"
+    }
+}
