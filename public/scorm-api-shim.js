@@ -37,10 +37,30 @@
     }
 
     function loadCMI() {
-        try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch (_) { return {}; }
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY) || '{}';
+            const data = JSON.parse(raw);
+            const keys = Object.keys(data);
+            if (keys.length > 0) {
+                console.group(`%c💾 localStorage READ %c ${STORAGE_KEY} (${keys.length} keys)`,
+                    'background:#2196F3;color:#fff;padding:2px 6px;border-radius:3px;font-weight:bold',
+                    'color:#2196F3;font-weight:bold');
+                keys.forEach(k => console.log(`  🔑 ${k}:`, data[k]));
+                console.groupEnd();
+            }
+            return data;
+        } catch (_) { return {}; }
     }
     function saveCMI(data) {
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (_) { }
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+            const keys = Object.keys(data);
+            console.group(`%c💾 localStorage WRITE %c ${STORAGE_KEY} (${keys.length} keys)`,
+                'background:#FF9800;color:#fff;padding:2px 6px;border-radius:3px;font-weight:bold',
+                'color:#FF9800;font-weight:bold');
+            keys.forEach(k => console.log(`  📝 ${k}:`, data[k]));
+            console.groupEnd();
+        } catch (_) { }
     }
     function postStatus(cmi) {
         try {
@@ -97,6 +117,9 @@
             callCount++;
             lastError = '0';
             const value = cmiData[element] !== undefined ? String(cmiData[element]) : '';
+            console.log(`%c🔍 LMSGetValue %c ${element} = %c${value || '(empty)'}`,
+                'background:#2196F3;color:#fff;padding:2px 5px;border-radius:3px;font-weight:bold',
+                'color:#333', 'color:#2196F3;font-weight:bold');
             log('get', 'LMSGetValue', {
                 call: callCount,
                 element,
@@ -113,6 +136,9 @@
             saveCMI(cmiData);
             postStatus(cmiData);
             lastError = '0';
+            console.log(`%c✏️  LMSSetValue %c ${element} = %c${value}%c (was: ${oldValue !== undefined ? oldValue : '(not set)'})`,
+                'background:#FF9800;color:#fff;padding:2px 5px;border-radius:3px;font-weight:bold',
+                'color:#333', 'color:#FF9800;font-weight:bold', 'color:#999;font-size:.9em');
             log('set', 'LMSSetValue', {
                 call: callCount,
                 element,
@@ -176,10 +202,15 @@
             return API.LMSFinish(p);
         },
         GetValue: function (e) {
+            console.log(`%c🔍 GetValue (2004) %c ${e}`,
+                'background:#2196F3;color:#fff;padding:2px 5px;border-radius:3px;font-weight:bold', 'color:#333');
             log('get', 'API_1484_11.GetValue', { scormVersion: '2004', element: e });
             return API.LMSGetValue(e);
         },
         SetValue: function (e, v) {
+            console.log(`%c✏️  SetValue (2004) %c ${e} = %c${v}`,
+                'background:#FF9800;color:#fff;padding:2px 5px;border-radius:3px;font-weight:bold',
+                'color:#333', 'color:#FF9800;font-weight:bold');
             log('set', 'API_1484_11.SetValue', { scormVersion: '2004', element: e, value: v });
             return API.LMSSetValue(e, v);
         },
@@ -202,6 +233,56 @@
             if (!window.parent.API_1484_11) window.parent.API_1484_11 = API_1484_11;
         }
     } catch (_) { }
+
+    // ── localStorage snapshot dump ────────────────────────────────────────────
+    // Called whenever user pauses, hides the tab, or navigates away.
+    // Scans ALL localStorage keys — catches content that writes its own keys
+    // (not just our scorm_cmi_* key) and when lmsPresent is false.
+    function dumpLocalStorage(trigger) {
+        const ts = new Date().toISOString();
+
+        // Collect every key in localStorage
+        const snapshot = {};
+        try {
+            for (var i = 0; i < localStorage.length; i++) {
+                var k = localStorage.key(i);
+                var raw = localStorage.getItem(k);
+                // Try to parse as JSON so objects display nicely; else keep raw string
+                try { snapshot[k] = JSON.parse(raw); } catch (_) { snapshot[k] = raw; }
+            }
+        } catch (e) { snapshot['__error__'] = e.message; }
+
+        var count = Object.keys(snapshot).length;
+
+        console.group(
+            '%c📦 SCORM localStorage Snapshot%c  [' + trigger + ']  ' + ts + '  (' + count + ' key' + (count !== 1 ? 's' : '') + ')',
+            'background:#673AB7;color:#fff;padding:3px 8px;border-radius:4px;font-weight:bold;font-size:1em',
+            'color:#673AB7;font-weight:bold'
+        );
+        if (count === 0) {
+            console.log('  (no data stored yet)');
+        } else {
+            console.log(JSON.parse(JSON.stringify(snapshot))); // plain JSON object
+        }
+        console.groupEnd();
+    }
+
+    // Dump when tab becomes hidden (user switches tabs or minimises)
+    document.addEventListener('visibilitychange', function () {
+        if (document.hidden) {
+            dumpLocalStorage('tab hidden / pause');
+        }
+    });
+
+    // Dump when window loses focus (user clicks away)
+    window.addEventListener('blur', function () {
+        dumpLocalStorage('window blur');
+    });
+
+    // Dump when page is about to unload (navigate away / close)
+    window.addEventListener('beforeunload', function () {
+        dumpLocalStorage('page unload / close');
+    });
 
     // Auto-initialize if content doesn't call LMSInitialize
     window.addEventListener('load', function () {

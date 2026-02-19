@@ -390,8 +390,18 @@ app.post('/upload', upload.single('scormFile'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     try {
         const analysis = await analyzeSCORM(req.file.path);
+
+        // Create _updated.zip with event tracker injected
+        let updatedFile = null;
+        try {
+            const origName = path.basename(req.file.originalname, '.zip') || 'scorm';
+            updatedFile = await createUpdatedZip(req.file.path, origName);
+        } catch (e) {
+            console.warn('[TRACKER] Failed to create updated zip:', e.message);
+        }
+
         fs.unlinkSync(req.file.path);
-        res.json(analysis);
+        res.json({ ...analysis, updatedFile });
     } catch (error) {
         if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         res.status(500).json({ error: error.message });
@@ -403,7 +413,10 @@ app.post('/repair', upload.single('scormFile'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
     const sessionId = crypto.randomBytes(8).toString('hex');
-    const repairedZipPath = path.join('uploads', `repaired_${sessionId}.zip`);
+    const repairedDir = path.join(__dirname, 'repaired');
+    fs.mkdirSync(repairedDir, { recursive: true });
+    const origName = path.basename(req.file.originalname, '.zip') || 'scorm';
+    const repairedZipPath = path.join(repairedDir, `${origName}_repaired.zip`);
 
     try {
         const result = await repairSCORM(req.file.path, repairedZipPath);
@@ -418,7 +431,7 @@ app.post('/repair', upload.single('scormFile'), async (req, res) => {
         fs.mkdirSync(sessionDir, { recursive: true });
         const repZip = new AdmZip(repairedZipPath);
         repZip.extractAllTo(sessionDir, true);
-        fs.unlinkSync(repairedZipPath);
+        // Keep repaired zip in repaired/ — do NOT delete
 
         // Inject shim into all HTML files in session dir (belt-and-suspenders)
         injectShimIntoSession(sessionDir);
@@ -428,12 +441,12 @@ app.post('/repair', upload.single('scormFile'), async (req, res) => {
             sessionId,
             launchFile: result.launchFile || 'index.html',
             repairs: result.repairs,
+            repairedFile: path.basename(repairedZipPath),
             playerUrl: `/play/${sessionId}/${result.launchFile || 'index.html'}`
         });
 
     } catch (error) {
         if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-        if (fs.existsSync(repairedZipPath)) fs.unlinkSync(repairedZipPath);
         res.status(500).json({ error: error.message });
     }
 });
@@ -442,8 +455,10 @@ app.post('/repair', upload.single('scormFile'), async (req, res) => {
 app.post('/repair-download', upload.single('scormFile'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-    const sessionId = crypto.randomBytes(8).toString('hex');
-    const repairedZipPath = path.join('uploads', `repaired_${sessionId}.zip`);
+    const repairedDir = path.join(__dirname, 'repaired');
+    fs.mkdirSync(repairedDir, { recursive: true });
+    const origName = path.basename(req.file.originalname, '.zip') || 'scorm';
+    const repairedZipPath = path.join(repairedDir, `${origName}_repaired.zip`);
 
     try {
         const result = await repairSCORM(req.file.path, repairedZipPath);
@@ -451,14 +466,11 @@ app.post('/repair-download', upload.single('scormFile'), async (req, res) => {
 
         if (!result.success) return res.status(500).json({ error: result.error });
 
-        const origName = req.file.originalname.replace(/\.zip$/i, '') || 'scorm';
-        res.download(repairedZipPath, `${origName}_repaired.zip`, () => {
-            if (fs.existsSync(repairedZipPath)) fs.unlinkSync(repairedZipPath);
-        });
+        // Send the file as download — keep the copy in repaired/
+        res.download(repairedZipPath, `${origName}_repaired.zip`);
 
     } catch (error) {
         if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-        if (fs.existsSync(repairedZipPath)) fs.unlinkSync(repairedZipPath);
         res.status(500).json({ error: error.message });
     }
 });
@@ -479,7 +491,11 @@ app.post('/repair-folder', async (req, res) => {
     for (const zipFile of zipFiles) {
         const zipPath = path.join(folderPath, zipFile);
         const sessionId = crypto.randomBytes(8).toString('hex');
-        const repairedZipPath = path.join(folderPath, zipFile.replace(/\.zip$/i, '_repaired.zip'));
+        // Save repaired zip into project repaired/ folder
+        const repairedDir = path.join(__dirname, 'repaired');
+        fs.mkdirSync(repairedDir, { recursive: true });
+        const origName = path.basename(zipFile, '.zip');
+        const repairedZipPath = path.join(repairedDir, `${origName}_repaired.zip`);
         try {
             const result = await repairSCORM(zipPath, repairedZipPath);
 
@@ -490,8 +506,7 @@ app.post('/repair-folder', async (req, res) => {
                 const repZip = new AdmZip(repairedZipPath);
                 repZip.extractAllTo(sessionDir, true);
                 injectShimIntoSession(sessionDir);
-                // Clean up repaired zip — session dir is the source of truth
-                try { fs.unlinkSync(repairedZipPath); } catch (_) { }
+                // Keep repaired zip in repaired/ — do NOT delete
             }
 
             results.push({
@@ -517,7 +532,10 @@ app.post('/repair-batch-file', async (req, res) => {
     if (!filePath.toLowerCase().endsWith('.zip')) return res.status(400).json({ error: 'File must be a ZIP' });
 
     const sessionId = crypto.randomBytes(8).toString('hex');
-    const repairedZipPath = path.join(os.tmpdir(), `repaired_${sessionId}.zip`);
+    const repairedDir = path.join(__dirname, 'repaired');
+    fs.mkdirSync(repairedDir, { recursive: true });
+    const origName = path.basename(filePath, '.zip');
+    const repairedZipPath = path.join(repairedDir, `${origName}_repaired.zip`);
 
     try {
         const result = await repairSCORM(filePath, repairedZipPath);
@@ -527,7 +545,7 @@ app.post('/repair-batch-file', async (req, res) => {
         fs.mkdirSync(sessionDir, { recursive: true });
         const repZip = new AdmZip(repairedZipPath);
         repZip.extractAllTo(sessionDir, true);
-        try { fs.unlinkSync(repairedZipPath); } catch (_) { }
+        // Keep repaired zip in repaired/ — do NOT delete
         injectShimIntoSession(sessionDir);
 
         res.json({
@@ -535,10 +553,10 @@ app.post('/repair-batch-file', async (req, res) => {
             sessionId,
             launchFile: result.launchFile || 'index.html',
             repairs: result.repairs,
+            repairedFile: path.basename(repairedZipPath),
             playerUrl: `/play/${sessionId}/${result.launchFile || 'index.html'}`
         });
     } catch (error) {
-        if (fs.existsSync(repairedZipPath)) try { fs.unlinkSync(repairedZipPath); } catch (_) { }
         res.status(500).json({ error: error.message });
     }
 });
@@ -564,7 +582,17 @@ app.post('/analyze-folder', async (req, res) => {
         const zipPath = path.join(folderPath, zipFile);
         try {
             const analysis = await analyzeSCORM(zipPath);
-            results.push({ filename: zipFile, path: zipPath, size: fs.statSync(zipPath).size, ...analysis });
+
+            // Create _updated.zip with event tracker injected
+            let updatedFile = null;
+            try {
+                const origName = path.basename(zipFile, '.zip');
+                updatedFile = await createUpdatedZip(zipPath, origName);
+            } catch (e) {
+                console.warn('[TRACKER] Failed to create updated zip for', zipFile, e.message);
+            }
+
+            results.push({ filename: zipFile, path: zipPath, size: fs.statSync(zipPath).size, ...analysis, updatedFile });
             if (analysis.success) {
                 successCount++;
                 if (analysis.resumeCapable) resumeCapableCount++;
@@ -582,6 +610,38 @@ app.post('/analyze-folder', async (req, res) => {
         summary: { totalFiles: zipFiles.length, successfullyAnalyzed: successCount, resumeCapable: resumeCapableCount, failed: failedCount, folderPath },
         results
     });
+});
+
+// Receive and log SCORM events from the tracker script
+app.post('/log-event', (req, res) => {
+    const event = req.body;
+    if (!event || !event.eventType) return res.status(400).json({ error: 'Invalid event' });
+
+    const sessionId = event.sessionId || 'unknown';
+    const logDir = path.join(__dirname, 'event_logs');
+    fs.mkdirSync(logDir, { recursive: true });
+    const logFile = path.join(logDir, `${sessionId}.ndjson`);
+
+    // Append as newline-delimited JSON
+    const line = JSON.stringify({
+        ...event,
+        serverTimestamp: new Date().toISOString()
+    }) + '\n';
+
+    try {
+        fs.appendFileSync(logFile, line, 'utf8');
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Download an _updated.zip file by filename
+app.get('/download-updated/:filename', (req, res) => {
+    const filename = path.basename(req.params.filename); // prevent path traversal
+    const filePath = path.join(__dirname, 'updated', filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+    res.download(filePath, filename);
 });
 
 // Delete player session
@@ -602,36 +662,98 @@ function injectShimIntoSession(sessionDir) {
 }
 
 function injectShimIntoDir(sessionDir, dir) {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    for (const e of entries) {
-        const full = path.join(dir, e.name);
-        if (e.isDirectory()) {
-            injectShimIntoDir(sessionDir, full);
-        } else if (e.name.match(/\.html?$/i)) {
-            try {
-                let html = fs.readFileSync(full, 'utf8');
-                if (!html.includes('scorm-api-shim.js')) {
-                    const depth = path.relative(sessionDir, dir).split(path.sep).filter(Boolean).length;
-                    const shimPath = depth === 0 ? '/scorm-api-shim.js' : '../'.repeat(depth) + 'scorm-api-shim.js';
-                    // Use absolute path via window.location for reliability
-                    const shimTag = `<script src="/scorm-api-shim.js"></script>\n`;
+    // Read the shim source once and inline it into each HTML file
+    const shimSrc = fs.readFileSync(path.join(__dirname, 'public', 'scorm-api-shim.js'), 'utf8');
+    const shimBlock = `<script>\n/* === SCORM API Shim (inlined) === */\n${shimSrc}\n</script>\n`;
+
+    function walk(currentDir) {
+        const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+        for (const e of entries) {
+            const full = path.join(currentDir, e.name);
+            if (e.isDirectory()) {
+                walk(full);
+            } else if (e.name.match(/\.html?$/i)) {
+                try {
+                    let html = fs.readFileSync(full, 'utf8');
+                    // Guard: skip if shim already inlined
+                    if (html.includes('SCORM API Shim (inlined)')) continue;
                     if (html.includes('<head>')) {
-                        html = html.replace('<head>', '<head>\n' + shimTag);
+                        html = html.replace('<head>', '<head>\n' + shimBlock);
                     } else if (html.includes('</head>')) {
-                        html = html.replace('</head>', shimTag + '</head>');
+                        html = html.replace('</head>', shimBlock + '</head>');
                     } else {
-                        html = shimTag + html;
+                        html = shimBlock + html;
                     }
                     fs.writeFileSync(full, html, 'utf8');
-                }
-            } catch (_) { }
+                } catch (_) { }
+            }
         }
+    }
+    walk(dir);
+}
+
+// ─── EVENT TRACKER INJECTION HELPER ─────────────────────────────────────────
+
+// Inline scorm-event-tracker.js into every HTML file in a directory tree
+function injectTrackerIntoDir(baseDir, dir) {
+    const trackerSrc = fs.readFileSync(path.join(__dirname, 'public', 'scorm-event-tracker.js'), 'utf8');
+    const trackerBlock = `<script>\n/* === SCORM Event Tracker (inlined) === */\n${trackerSrc}\n</script>\n`;
+
+    function walk(currentDir) {
+        const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+        for (const e of entries) {
+            const full = path.join(currentDir, e.name);
+            if (e.isDirectory()) {
+                walk(full);
+            } else if (e.name.match(/\.html?$/i)) {
+                try {
+                    let html = fs.readFileSync(full, 'utf8');
+                    // Guard: skip if tracker already inlined
+                    if (html.includes('SCORM Event Tracker (inlined)')) continue;
+                    if (html.includes('<head>')) {
+                        html = html.replace('<head>', '<head>\n' + trackerBlock);
+                    } else if (html.includes('</head>')) {
+                        html = html.replace('</head>', trackerBlock + '</head>');
+                    } else {
+                        html = trackerBlock + html;
+                    }
+                    fs.writeFileSync(full, html, 'utf8');
+                } catch (_) { }
+            }
+        }
+    }
+    walk(dir);
+}
+
+// Extract zip, inject shim + tracker inline into all HTML files, re-zip as <origName>_updated.zip
+async function createUpdatedZip(zipPath, origName) {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'scorm_updated_'));
+    try {
+        // Extract
+        const zip = new AdmZip(zipPath);
+        zip.extractAllTo(tmpDir, true);
+
+        // Inline shim first, then tracker into all HTML files
+        injectShimIntoDir(tmpDir, tmpDir);
+        injectTrackerIntoDir(tmpDir, tmpDir);
+
+        // Re-zip
+        const updatedDir = path.join(__dirname, 'updated');
+        fs.mkdirSync(updatedDir, { recursive: true });
+        const outPath = path.join(updatedDir, `${origName}_updated.zip`);
+        const outZip = new AdmZip();
+        addDirToZip(outZip, tmpDir, tmpDir);
+        outZip.writeZip(outPath);
+
+        return path.basename(outPath);
+    } finally {
+        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) { }
     }
 }
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
 
-['uploads', 'player_sessions'].forEach(dir => {
+['uploads', 'player_sessions', 'repaired', 'updated', 'event_logs'].forEach(dir => {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir);
 });
 

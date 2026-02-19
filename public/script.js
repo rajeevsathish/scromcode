@@ -48,6 +48,9 @@ function displayResults(result) {
     hideProgress();
     resultsSection.style.display = 'block';
 
+    // Store updatedFile for download button
+    window.currentUpdatedFile = result.updatedFile || null;
+
     let html = '';
     if (result.success) {
         const isGood = result.resumeCapable;
@@ -56,6 +59,9 @@ function displayResults(result) {
         const primaryBtn = isGood
             ? `<button class="play-btn" onclick="repairPackage(true)">▶ Play in Browser</button>`
             : `<button class="repair-btn" onclick="repairPackage(true)">🔧 Repair &amp; Play</button>`;
+        const updatedBtn = result.updatedFile
+            ? `<button class="updated-download-btn" onclick="downloadUpdated()">📦 Download Updated</button>`
+            : '';
         html = `
             <div class="status-badge ${statusClass}">${statusText}</div>
             <h3 style="margin-bottom:1rem;color:#333">Analysis Details</h3>
@@ -65,6 +71,7 @@ function displayResults(result) {
             <div class="repair-actions" style="margin-top:1.2rem;display:flex;gap:.8rem;flex-wrap:wrap">
                 ${primaryBtn}
                 <button class="repair-download-btn" onclick="repairAndDownload()">📥 Repair &amp; Download</button>
+                ${updatedBtn}
             </div>
             <div id="repairStatus"></div>
         `;
@@ -82,6 +89,31 @@ function displayResults(result) {
 
     html += `<div class="upload-another"><button onclick="resetUpload()">Analyze Another Package</button></div>`;
     resultCard.innerHTML = html;
+}
+
+// Download the _updated.zip for the current single-file analysis
+function downloadUpdated() {
+    if (!window.currentUpdatedFile) { alert('No updated file available.'); return; }
+    const a = document.createElement('a');
+    a.href = `/download-updated/${encodeURIComponent(window.currentUpdatedFile)}`;
+    a.download = window.currentUpdatedFile;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
+
+// Download the _updated.zip for a specific batch result
+function downloadBatchUpdated(index) {
+    const data = window.batchAnalysisResults;
+    if (!data || !data.results || !data.results[index]) return;
+    const updatedFile = data.results[index].updatedFile;
+    if (!updatedFile) { alert('No updated file for this entry.'); return; }
+    const a = document.createElement('a');
+    a.href = `/download-updated/${encodeURIComponent(updatedFile)}`;
+    a.download = updatedFile;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
 }
 
 // ─── Repair & Play (single file) ─────────────────────────────────────────────
@@ -398,6 +430,10 @@ function buildResultsGrid(results, isRepair) {
                 actionBtns += `<button onclick="repairBatchFile(${index})" class="play-btn-sm">▶ Play</button>`;
             } else {
                 actionBtns += `<button onclick="repairBatchFile(${index})" class="repair-btn-sm">🔧 Repair &amp; Play</button>`;
+            }
+            // Download Updated button if available
+            if (result.updatedFile) {
+                actionBtns += `<button onclick="downloadBatchUpdated(${index})" class="updated-download-btn">📦 Updated</button>`;
             }
         }
 

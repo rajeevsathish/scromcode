@@ -711,6 +711,23 @@ h1 {
     filter: brightness(1.05);
 }
 
+.updated-download-btn {
+    background: linear-gradient(135deg, #11998e, #38ef7d);
+    color: #fff;
+    border: none;
+    padding: .4rem .9rem;
+    border-radius: 8px;
+    font-size: .82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .3s ease;
+}
+
+.updated-download-btn:hover {
+    transform: translateY(-2px);
+    filter: brightness(1.08);
+}
+
 .error-text {
     color: #e74c3c;
     font-size: .88rem;
